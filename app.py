@@ -3,13 +3,29 @@ from tkinter import ttk  # Importar ttk para usar combobox
 import winsound
 import pygame
 from PIL import Image, ImageTk
-import bd
+from bd_proxy import BancoDeDadosProxy
 import re  # Importar re para validação de CPF
+from bd import BancoDeDados  # Importar a instância Singleton
+
+# Instanciar o banco de dados
+bd = BancoDeDados()
 
 cpf_digitado = ""
 numero_digitado = "" 
 modo_admin = False  # Variável para controlar o modo administrador
 interface_atual = None  # Guardar referência para restaurar a interface anterior
+
+# Simulação de um usuário administrador
+usuario_admin = {"nome": "Admin", "is_admin": True}
+
+# Simulação de um eleitor comum
+usuario_comum = {"nome": "Eleitor", "is_admin": False}
+
+# Instância do proxy usando um usuário específico
+bd_proxy = BancoDeDadosProxy(usuario_admin)  # Ou usuario_comum, dependendo do usuário logado
+
+# Funções relacionadas à interface gráfica e lógica
+
 
 # Funções relacionadas à interface gráfica e lógica
 def tocar_som_confirmacao():
@@ -22,10 +38,10 @@ def tocar_som_erro():
 
 def confirmar_voto():
     global numero_digitado, cpf_digitado
-    candidato = bd.buscar_candidato(numero_digitado)
+    candidato = bd_proxy.buscar_candidato(numero_digitado)
     if candidato:
         # Registrar o voto
-        bd.registrar_voto(cpf_digitado, numero_digitado)
+        bd_proxy.registrar_voto(cpf_digitado, numero_digitado)
         
         tocar_som_confirmacao()
         mostrar_fim()
@@ -34,7 +50,7 @@ def confirmar_voto():
 
 def mostrar_dados_candidato():
     global numero_digitado
-    candidato = bd.buscar_candidato(numero_digitado)
+    candidato = bd_proxy.buscar_candidato(numero_digitado)
     if candidato:
         label_numero.config(text=f"Número:")
         label_nome.config(text=f"Nome: {candidato[1]}")
@@ -67,7 +83,7 @@ def voto_branco():
     label_nome.config(text="VOTO EM BRANCO")
     label_partido.config(text="")
     mostrar_imagem(None)
-    bd.registrar_voto(cpf_digitado, "branco")  # Registrar voto em branco
+    bd_proxy.registrar_voto(cpf_digitado, "branco")  # Registrar voto em branco
     tocar_som_confirmacao()
     mostrar_fim()
 
@@ -108,7 +124,7 @@ def verificar_cpf():
         tocar_som_erro()
         return
     
-    if bd.cpf_ja_votou(cpf_digitado):
+    if bd_proxy.cpf_ja_votou(cpf_digitado):
         label_cpf_feedback.config(text="CPF já votou. Você não pode votar novamente.")
         tocar_som_erro()
     else:
@@ -208,7 +224,7 @@ def mostrar_modo_admin():
     label_admin.pack(pady=20)
 
     # Exibir CPFs e votos
-    cpfs_votos = bd.buscar_cpfs_votos()
+    cpfs_votos = bd_proxy.buscar_cpfs_votos()
     for cpf, nome_candidato in cpfs_votos:
         frame_voto = tk.Frame(root)
         frame_voto.pack(pady=5, fill="x")
@@ -223,11 +239,11 @@ def mostrar_modo_admin():
         botao_editar.pack(side="right", padx=5)
 
 def excluir_voto(cpf):
-    bd.excluir_voto(cpf)
+    bd_proxy.excluir_voto(cpf)
     mostrar_modo_admin()
 
 def editar_voto(cpf):
-    numeros_candidatos = bd.buscar_numeros_candidatos()
+    numeros_candidatos = bd_proxy.buscar_numeros_candidatos()
     if not numeros_candidatos:
         tk.messagebox.showerror("Erro", "Nenhum candidato encontrado.")
         return
@@ -244,7 +260,7 @@ def editar_voto(cpf):
     def confirmar_edicao():
         novo_numero_candidato = combobox_numeros.get()
         if novo_numero_candidato:
-            sucesso = bd.editar_voto(cpf, novo_numero_candidato)
+            sucesso = bd_proxy.editar_voto(cpf, novo_numero_candidato)
             if sucesso:
                 janela_editar.destroy()
                 mostrar_modo_admin()
@@ -259,7 +275,7 @@ root = tk.Tk()
 root.title("Urna Eletrônica")
 root.geometry("840x480")
 
-bd.inicializar_banco()
+bd_proxy.bd._inicializar_banco()
 
 root.bind("<Control-b>", lambda event: mostrar_modo_admin())
 root.bind("<Control-n>", lambda event: mostrar_tela_cpf())
