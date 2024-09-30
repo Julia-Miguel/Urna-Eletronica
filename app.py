@@ -1,76 +1,101 @@
 import tkinter as tk
-from tkinter import ttk  # Importar ttk para usar combobox
+from tkinter import ttk
 import winsound
 import pygame
 from PIL import Image, ImageTk
 from bd_proxy import BancoDeDadosProxy
-import re  # Importar re para validação de CPF
-from bd import BancoDeDados  # Importar a instância Singleton
+import re
+from bd import BancoDeDados
 
-# Instanciar o banco de dados
 bd = BancoDeDados()
 
 cpf_digitado = ""
-numero_digitado = "" 
-modo_admin = False  # Variável para controlar o modo administrador
-interface_atual = None  # Guardar referência para restaurar a interface anterior
+numero_digitado_vereador = ""
+numero_digitado_prefeito = ""
+modo_admin = False
+interface_atual = None
 
-# Simulação de um usuário administrador
 usuario_admin = {"nome": "Admin", "is_admin": True}
 
-# Simulação de um eleitor comum
 usuario_comum = {"nome": "Eleitor", "is_admin": False}
 
-# Instância do proxy usando um usuário específico
-bd_proxy = BancoDeDadosProxy(usuario_admin)  # Ou usuario_comum, dependendo do usuário logado
+bd_proxy = BancoDeDadosProxy(usuario_admin)  # usuario_admin ou usuario_comum
 
-# Funções relacionadas à interface gráfica e lógica
-
-
-# Funções relacionadas à interface gráfica e lógica
 def tocar_som_confirmacao():
-    pygame.mixer.init()
+    if not pygame.mixer.get_init():
+        pygame.mixer.init()
     pygame.mixer.music.load("urna.mp3")
     pygame.mixer.music.play()
 
 def tocar_som_erro():
     winsound.PlaySound("erro.wav", winsound.SND_ASYNC)
 
-def confirmar_voto():
-    global numero_digitado, cpf_digitado
-    candidato = bd_proxy.buscar_candidato(numero_digitado)
-    if candidato:
-        # Registrar o voto
-        bd_proxy.registrar_voto(cpf_digitado, numero_digitado)
-        
-        tocar_som_confirmacao()
-        mostrar_fim()
-    else:
-        tocar_som_erro()
+def confirmar_voto(tipo):
+    global numero_digitado_vereador, numero_digitado_prefeito, cpf_digitado
 
-def mostrar_dados_candidato():
-    global numero_digitado
-    candidato = bd_proxy.buscar_candidato(numero_digitado)
+    if tipo == 'vereador':
+        if numero_digitado_vereador or numero_digitado_vereador == "branco":
+            mostrar_tela_votacao('prefeito')
+        else:
+            tocar_som_erro()
+            corrigir_voto()
+    elif tipo == 'prefeito':
+        if numero_digitado_prefeito or numero_digitado_prefeito == "branco":
+            bd_proxy.registrar_voto(cpf_digitado, numero_digitado_vereador, numero_digitado_prefeito)
+            tocar_som_confirmacao()
+            mostrar_fim()
+        else:
+            tocar_som_erro()
+            corrigir_voto()
+        
+def mostrar_dados_candidato(tipo):
+    global numero_digitado_vereador, numero_digitado_prefeito
+    if tipo == 'vereador':
+        candidato = bd_proxy.buscar_candidato(numero_digitado_vereador)
+        label_tipo.config(text="Vereador(a)")
+    else:
+        candidato = bd_proxy.buscar_prefeito(numero_digitado_prefeito)
+        label_tipo.config(text="Prefeito(a)")
+        label_vice.config(text="Vice-Prefeito(a)")
+
     if candidato:
-        label_numero.config(text=f"Número:")
         label_nome.config(text=f"Nome: {candidato[1]}")
         label_partido.config(text=f"Partido: {candidato[2]}")
         mostrar_imagem(candidato[3])
+        if tipo == 'prefeito':
+            label_nome_vice.config(text=f"Vice-Prefeito(a): {candidato[4]}")
+            mostrar_imagem_vice(candidato[5])
+        else:
+            label_nome_vice.config(text="")
+            mostrar_imagem_vice(None)
     else:
         label_nome.config(text="Número inválido")
         label_partido.config(text="")
         mostrar_imagem(None)
+        label_nome_vice.config(text="")
+        mostrar_imagem_vice(None)
 
 def mostrar_imagem(caminho_imagem):
     if caminho_imagem:
         img = Image.open(caminho_imagem)
-        img = img.resize((200, 200))
+        img = img.resize((150, 150))
         img_tk = ImageTk.PhotoImage(img)
         label_imagem.config(image=img_tk)
         label_imagem.image = img_tk
     else:
         label_imagem.config(image="")
         label_imagem.image = None
+        
+def mostrar_imagem_vice(caminho_imagem):
+    if caminho_imagem:
+        img = Image.open(caminho_imagem)
+        img = img.resize((120, 120))
+        img_tk = ImageTk.PhotoImage(img)
+        label_imagem_vice.config(image=img_tk)
+        label_imagem_vice.image = img_tk
+    else:
+        label_imagem_vice.config(image="")
+        label_imagem_vice.image = None
 
 def mostrar_fim():
     for widget in root.winfo_children():
@@ -78,43 +103,60 @@ def mostrar_fim():
     label_fim = tk.Label(root, text="FIM!", font=("Arial", 90))
     label_fim.pack(expand=True)
 
-def voto_branco():
-    global cpf_digitado
-    label_nome.config(text="VOTO EM BRANCO")
-    label_partido.config(text="")
-    mostrar_imagem(None)
-    bd_proxy.registrar_voto(cpf_digitado, "branco")  # Registrar voto em branco
+def voto_branco(tipo):
+    global numero_digitado_vereador, numero_digitado_prefeito, cpf_digitado
+
+    if tipo == 'vereador':
+        numero_digitado_vereador = "branco"
+        mostrar_tela_votacao('prefeito')
+    elif tipo == 'prefeito':
+        numero_digitado_prefeito = "branco"
+        bd_proxy.registrar_voto(cpf_digitado, numero_digitado_vereador, numero_digitado_prefeito)
+        mostrar_fim()
+
     tocar_som_confirmacao()
-    mostrar_fim()
 
 def corrigir_voto():
-    global numero_digitado
-    numero_digitado = ""
+    global numero_digitado_vereador, numero_digitado_prefeito
+    numero_digitado_vereador = ""
+    numero_digitado_prefeito = ""
     entry_numero.delete(0, tk.END)
     label_nome.config(text="")
+    label_nome_vice.config(text="")
     label_partido.config(text="")
+    label_tipo.config(text="")
+    
     mostrar_imagem(None)
+    mostrar_imagem_vice(None)
 
 def reiniciar_interface():
     corrigir_voto()
 
 def digitar_numero(event):
-    global numero_digitado
-    numero_digitado = entry_numero.get()
-    if len(numero_digitado) == 2:
-        mostrar_dados_candidato()
+    global numero_digitado_vereador, numero_digitado_prefeito
+    numero = entry_numero.get()
+    
+    if entry_tipo == 'Vereador':
+        numero_digitado_vereador = numero[:5]
+        entry_numero.delete(0, tk.END)
+        entry_numero.insert(0, numero_digitado_vereador)
+        if len(numero_digitado_vereador) == 5:
+            mostrar_dados_candidato('vereador')
+    elif entry_tipo == 'Prefeito':
+        numero_digitado_prefeito = numero[:2]
+        entry_numero.delete(0, tk.END)
+        entry_numero.insert(0, numero_digitado_prefeito)
+        if len(numero_digitado_prefeito) == 2:
+            mostrar_dados_candidato('prefeito')
 
-# Função para validar o CPF
 def validar_cpf(cpf):
     return re.fullmatch(r'\d{11}', cpf) is not None
 
-# Função para limitar a entrada de CPF a 11 dígitos
 def limitar_cpf(*args):
     cpf = cpf_var.get()
     if len(cpf) > 11:
         cpf_var.set(cpf[:11])
 
-# Função para verificar o CPF e prosseguir com a votação
 def verificar_cpf():
     global cpf_digitado
     cpf_digitado = entry_cpf.get()
@@ -130,14 +172,20 @@ def verificar_cpf():
     else:
         mostrar_tela_votacao()  # Vai para a tela de votação
 
-# Função para mostrar a tela de votação após CPF ser verificado
-def mostrar_tela_votacao():
-    global label_numero, label_nome, label_partido, label_imagem, entry_numero
-
+def mostrar_tela_votacao(tipo='vereador'):
+    global label_numero, label_nome, label_partido, label_imagem, label_imagem_vice, entry_numero, label_nome_vice, label_tipo, entry_tipo, label_vice
+    
     for widget in root.winfo_children():
         widget.destroy()
 
-    label_titulo = tk.Label(root, text="PRESIDENTE(A)", font=("Arial", 20))
+    if tipo == 'vereador':
+        entry_tipo = 'Vereador'
+        titulo = "VOTAR EM VEREADOR(A)"
+    else:
+        entry_tipo = 'Prefeito'
+        titulo = "VOTAR EM PREFEITO(A)"
+
+    label_titulo = tk.Label(root, text=titulo, font=("Arial", 20))
     label_titulo.pack(pady=(20, 30), padx=(80, 0), anchor="w")
 
     frame_numero = tk.Frame(root)
@@ -157,27 +205,38 @@ def mostrar_tela_votacao():
     label_partido.pack(pady=10, anchor="w", padx=(10, 0))
 
     label_imagem = tk.Label(root)
-    label_imagem.place(x=620, y=10)
+    label_imagem.place(x=680, y=10)
+
+    label_imagem_vice = tk.Label(root)
+    label_imagem_vice.place(x=700, y=200)
+
+    label_nome_vice = tk.Label(root, text="", font=("Arial", 14), anchor="w")
+    label_nome_vice.pack(pady=(10, 0), anchor="w", padx=(10, 0))
+
+    label_tipo = tk.Label(root, text="", font=("Arial", 12))
+    label_tipo.place(x=718, y=170)
+    
+    label_vice = tk.Label(root, text="", font=("Arial", 12))
+    label_vice.place(x=705, y=325)
 
     frame_acoes = tk.Frame(root)
-    frame_acoes.pack(pady=10)
+    frame_acoes.pack(pady=10, anchor="w")
 
-    botao_confirmar = tk.Button(frame_acoes, text="CONFIRMAR", font=("Arial", 14), bg="green", command=confirmar_voto)
-    botao_confirmar.grid(row=0, column=0, padx=5)
+    botao_confirmar = tk.Button(frame_acoes, text="CONFIRMAR", font=("Arial", 12), bg="green", command=lambda: confirmar_voto(entry_tipo.lower()))
+    botao_confirmar.pack(side="left", padx=(40, 0))
 
-    botao_branco = tk.Button(frame_acoes, text="BRANCO", font=("Arial", 14), bg="white", command=voto_branco)
-    botao_branco.grid(row=0, column=1, padx=5)
+    botao_branco = tk.Button(frame_acoes, text="BRANCO", font=("Arial", 12), bg="white", command=lambda: voto_branco(entry_tipo.lower()))
+    botao_branco.pack(side="left", padx=5)
 
-    botao_corrigir = tk.Button(frame_acoes, text="CORRIGIR", font=("Arial", 14), bg="red", command=corrigir_voto)
-    botao_corrigir.grid(row=0, column=2, padx=5)
-
-    frame_divisor = tk.Frame(root, height=2, bd=1, relief="sunken")
-    frame_divisor.pack(fill="x", pady=10)
+    botao_corrigir = tk.Button(frame_acoes, text="CORRIGIR", font=("Arial", 12), bg="red", command=corrigir_voto)
+    botao_corrigir.pack(side="left", padx=5)
 
     label_instrucoes = tk.Label(root, text="Aperte a tecla:\nVERDE para CONFIRMAR este voto\nVERMELHO para REINICIAR este voto\nBRANCO para votar em branco", font=("Arial", 14), anchor="w", justify="left")
-    label_instrucoes.pack(pady=10, anchor="w", padx=20, fill="x")
+    label_instrucoes.pack(pady=10, anchor="w", padx=20, fill="x", side="bottom")
+    
+    frame_divisor = tk.Frame(root, height=2, bd=1, relief="sunken")
+    frame_divisor.pack(fill="x", side="bottom")
 
-# Função para mostrar a tela inicial de CPF
 def mostrar_tela_cpf():
     global entry_cpf, label_cpf_feedback, cpf_var
     
@@ -199,7 +258,6 @@ def mostrar_tela_cpf():
     botao_verificar_cpf = tk.Button(root, text="Verificar CPF", font=("Arial", 14), command=verificar_cpf)
     botao_verificar_cpf.pack(pady=20)
 
-# Função para alternar entre modo administrador e modo votação
 def alternar_modo(event):
     global modo_admin, interface_atual
     if modo_admin:
@@ -210,12 +268,10 @@ def alternar_modo(event):
         mostrar_modo_admin()
         modo_admin = True
 
-# Função para salvar a interface atual
 def salvar_interface_atual():
     global interface_atual
     interface_atual = [widget.pack_info() for widget in root.winfo_children()]
 
-# Função para exibir a tela de administrador
 def mostrar_modo_admin():
     for widget in root.winfo_children():
         widget.destroy()
@@ -223,27 +279,29 @@ def mostrar_modo_admin():
     label_admin = tk.Label(root, text="Modo Administrador", font=("Arial", 20))
     label_admin.pack(pady=20)
 
-    # Exibir CPFs e votos
     cpfs_votos = bd_proxy.buscar_cpfs_votos()
-    for cpf, nome_candidato in cpfs_votos:
+    for cpf, nome_vereador, nome_prefeito in cpfs_votos:
         frame_voto = tk.Frame(root)
         frame_voto.pack(pady=5, fill="x")
 
-        label_voto = tk.Label(frame_voto, text=f"CPF: {cpf} - Votou em: {nome_candidato}", font=("Arial", 14))
+        label_voto = tk.Label(frame_voto, text=f"CPF: {cpf} - Votou em: {nome_vereador} | {nome_prefeito}", font=("Arial", 14))
         label_voto.pack(side="left", padx=5)
 
         botao_excluir = tk.Button(frame_voto, text="Excluir", command=lambda cpf=cpf: excluir_voto(cpf))
         botao_excluir.pack(side="right", padx=5)
 
-        botao_editar = tk.Button(frame_voto, text="Editar", command=lambda cpf=cpf: editar_voto(cpf))
-        botao_editar.pack(side="right", padx=5)
+        botao_editar_prefeito = tk.Button(frame_voto, text="Editar prefeito", command=lambda cpf=cpf: editar_voto(cpf, 'prefeito'))
+        botao_editar_prefeito.pack(side="right", padx=5)
+
+        botao_editar_vereador = tk.Button(frame_voto, text="Editar vereador", command=lambda cpf=cpf: editar_voto(cpf, 'vereador'))
+        botao_editar_vereador.pack(side="right", padx=5)
 
 def excluir_voto(cpf):
     bd_proxy.excluir_voto(cpf)
     mostrar_modo_admin()
 
-def editar_voto(cpf):
-    numeros_candidatos = bd_proxy.buscar_numeros_candidatos()
+def editar_voto(cpf, tipo):
+    numeros_candidatos = bd_proxy.buscar_numeros_candidatos(tipo)
     if not numeros_candidatos:
         tk.messagebox.showerror("Erro", "Nenhum candidato encontrado.")
         return
@@ -260,7 +318,10 @@ def editar_voto(cpf):
     def confirmar_edicao():
         novo_numero_candidato = combobox_numeros.get()
         if novo_numero_candidato:
-            sucesso = bd_proxy.editar_voto(cpf, novo_numero_candidato)
+            if tipo == 'vereador':
+                sucesso = bd_proxy.editar_voto(cpf, novo_numero_candidato_vereador=novo_numero_candidato)
+            else:
+                sucesso = bd_proxy.editar_voto(cpf, novo_numero_candidato_prefeito=novo_numero_candidato)
             if sucesso:
                 janela_editar.destroy()
                 mostrar_modo_admin()
@@ -270,7 +331,6 @@ def editar_voto(cpf):
     botao_confirmar = tk.Button(janela_editar, text="Confirmar", command=confirmar_edicao)
     botao_confirmar.pack(pady=10)
 
-# Inicializar a janela e banco de dados
 root = tk.Tk()
 root.title("Urna Eletrônica")
 root.geometry("840x480")
@@ -280,7 +340,6 @@ bd_proxy.bd._inicializar_banco()
 root.bind("<Control-b>", lambda event: mostrar_modo_admin())
 root.bind("<Control-n>", lambda event: mostrar_tela_cpf())
 
-# Mostrando a tela de CPF primeiro
 mostrar_tela_cpf()
 
 root.mainloop()
